@@ -6,48 +6,18 @@
     <style>
         body {
             font-family: 'Comic Sans MS', cursive, sans-serif;
-            background-color: #faf0e6; /* Светлый фон */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
+            background-color: #faf0e6;
             margin: 0;
-            overflow: hidden; /* Важно, чтобы коты не вызывали скролл */
-            position: relative; /* Делаем body точкой отсчета для абсолютного позиционирования */
+            overflow: hidden; /* Убираем скролл */
+            position: relative; /* Точка отсчета для абсолютного позиционирования */
+            height: 100vh;
         }
 
         h1 {
             color: #8b4513;
-            z-index: 2; /* Число выше котов */
-        }
-
-        /* Контейнер для игры теперь только для котов */
-        #game-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none; /* Коты не будут перехватывать клики */
-            padding-top: 10%; /* Отступ сверху, чтобы было видно заголовок */
-        }
-
-        .cat-picture {
-            position: absolute;
-            width: 150px; /* Увеличили размер */
-            height: auto;
-            border-radius: 15px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-            opacity: 0.9;
-            transition: transform 0.3s ease; /* Добавим плавности */
-            user-select: none; /* Нельзя выделить текст на картинке */
-            pointer-events: auto; /* Включаем клики конкретно для картинок */
-            cursor: pointer;
-        }
-        .cat-picture:hover {
-            transform: scale(1.05); /* Кот увеличивается при наведении */
-            z-index: 10; /* При наведении кот поверх остальных */
+            text-align: center;
+            padding-top: 20px;
+            z-index: 3; /* Выше всего остального */
         }
 
         #question {
@@ -55,20 +25,20 @@
             font-size: 2em;
             margin-bottom: 20px;
             color: #333;
-            z-index: 2; /* Вопрос выше котов */
+            z-index: 3; /* Выше котов */
         }
 
+        /* --- ИЗМЕНЕНИЯ ДЛЯ ЦИФР ---
+           Размещаем блок с цифрами на одну пятую от низа */
         #numbers {
-            position: fixed; /* Блок с числами всегда внизу экрана */
-            bottom: 20px;
+            position: fixed;
+            bottom: 20%; /* Одна пятая (20%) от высоты экрана */
             left: 50%;
             transform: translateX(-50%);
             display: flex;
             gap: 15px;
-            z-index: 2; /* Числа выше всего остального */
-            background-color: rgba(255,255,255,0.7); /* Полупрозрачный фон для читаемости */
-            padding: 10px 20px;
-            border-radius: 20px;
+            z-index: 3; /* Выше котов */
+            pointer-events: auto; /* Кнопки кликабельны */
         }
 
         button {
@@ -94,6 +64,23 @@
              color: white;
              box-shadow: 0 4px #FF4500;
         }
+
+        .cat-picture {
+            position: absolute;
+            width: 150px;
+            height: auto;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            opacity: 0.9;
+            user-select: none;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        .cat-picture:hover {
+            transform: scale(1.05);
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
@@ -109,8 +96,8 @@
         const numbersEl = document.getElementById('numbers');
 
         let correctAnswer = Math.floor(Math.random() * (9 - 1 + 1)) + 1;
+        const catSize = 150; // Размер кота в пикселях
 
-        // --- ВАЖНАЯ ЧАСТЬ ---
         const catImageLinks = [
              'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota52.png',
     'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota46.png',
@@ -118,7 +105,6 @@
 'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota39.png',
 'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota37.png'
         ];
-        // -------------------
 
         function startGame() {
              gameContainer.innerHTML = '';
@@ -127,20 +113,51 @@
              questionEl.style.color = "#333";
              correctAnswer = Math.floor(Math.random() * (9 - 1 + 1)) + 1;
 
+             const placedCats = []; // Массив для хранения позиций уже размещенных котов
+
              for (let i = 0; i < correctAnswer; i++) {
+                  let validPositionFound = false;
+                  let newCatPos;
+
+                  // Пробуем найти место, где кот не будет пересекаться с другими
+                  while (!validPositionFound) {
+                      const xPos = Math.random() * (window.innerWidth - catSize);
+                      const yPos = Math.random() * (window.innerHeight - catSize - window.innerHeight / 5); // Не залезаем на зону цифр
+
+                      newCatPos = {x: xPos, y: yPos};
+
+                      // Проверяем пересечение с уже размещенными котами
+                      if (placedCats.length === 0) {
+                          validPositionFound = true; // Если это первый кот, место всегда валидно
+                      } else {
+                          let noCollision = true;
+                          for (const pos of placedCats) {
+                              // Простая проверка по квадрату (AABB)
+                              if (
+                                  newCatPos.x < pos.x + catSize &&
+                                  newCatPos.x + catSize > pos.x &&
+                                  newCatPos.y < pos.y + catSize &&
+                                  newCatPos.y + catSize > pos.y
+                              ) {
+                                  noCollision = false;
+                                  break; // Нашли пересечение, выходим из цикла проверки
+                              }
+                          }
+                          validPositionFound = noCollision;
+                      }
+                  }
+
+                  // Позиция найдена, добавляем её в массив
+                  placedCats.push(newCatPos);
+
                   const randomIndex = Math.floor(Math.random() * catImageLinks.length);
                   const imgSrc = catImageLinks[randomIndex];
 
                   const catImg = document.createElement('img');
                   catImg.src = imgSrc;
                   catImg.classList.add('cat-picture');
-
-                  /* Генерируем случайную позицию в пределах видимой области */
-                  const xPos = Math.random() * (window.innerWidth - 150);
-                  const yPos = Math.random() * (window.innerHeight / 1.5); /* Ограничиваем высоту */
-
-                  catImg.style.left = `${xPos}px`;
-                  catImg.style.top = `${yPos}px`;
+                  catImg.style.left = `${newCatPos.x}px`;
+                  catImg.style.top = `${newCatPos.y}px`;
 
                   gameContainer.appendChild(catImg);
              }
