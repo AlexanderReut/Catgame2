@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Считаем котов!</title>
+    <style>
+        body {
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            background-color: #f5f5dc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h1 {
+            color: #8b4513;
+        }
+
+        #game-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px; /* Расстояние между котами */
+            margin-bottom: 25px;
+        }
+
+        .cat-picture {
+            width: 120px;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        #question {
+            font-size: 2.2em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        #numbers {
+            display: flex;
+        }
+
+        button {
+            font-size: 1.5em;
+            padding: 12px 20px;
+            margin: 0 8px;
+            border-radius: 12px;
+            border: none;
+            background-color: #fff8dc;
+            color: #a0522d;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button.correct {
+             background-color: #98fb98; /* Зеленый */
+             color: #006400;
+        }
+
+        button.wrong {
+             background-color: #f08080; /* Красный */
+             color: #8b0000;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Считаем котов!</h1>
+    <div id="game-container"></div>
+    <div id="question">Сколько котов на крыше?</div>
+    <div id="numbers"></div>
+
+    <script>
+        const gameContainer = document.getElementById('game-container');
+        const questionEl = document.getElementById('question');
+        const numbersEl = document.getElementById('numbers');
+
+        // Переменная для хранения правильного ответа
+        let correctAnswer = getNewNumber();
+
+        // --- ВАЖНАЯ ЧАСТЬ ---
+        // Здесь нужно вставить ваши ссылки на картинки
+        const catImageLinks =  [
+    'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota52.png',
+    'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota46.png',
+    'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota44.png',
+'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota39.png',
+'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota37.png'
+];
+
+        // Функция для генерации нового случайного числа
+        function getNewNumber() {
+             return Math.floor(Math.random() * (9 - 1 + 1)) + 1; // От 1 до 9
+        }
+
+        function startGame() {
+             // Очищаем поле с котами и кнопки
+             gameContainer.innerHTML = '';
+             numbersEl.innerHTML = '';
+             questionEl.textContent = "Сколько котов на крыше?";
+             questionEl.style.color = "#333";
+
+             // --- ИСПРАВЛЕНО ---
+             // Генерируем НОВОЕ число для этого раунда
+             correctAnswer = getNewNumber();
+
+
+             // Создаем картинки с котами в соответствии с новым числом
+             for (let i = 0; i < correctAnswer; i++) {
+                  const randomIndex = Math.floor(Math.random() * catImageLinks.length);
+                  const imgSrc = catImageLinks[randomIndex];
+                  const catImg = document.createElement('img');
+                  catImg.src = imgSrc;
+                  catImg.classList.add('cat-picture');
+                  gameContainer.appendChild(catImg);
+             }
+
+             // Создаем кнопки с цифрами от 1 до 9 по порядку
+             for (let num = 1; num <= 9; num++) {
+                  const btn = document.createElement('button');
+                  btn.textContent = num;
+                  btn.value = num;
+                  btn.disabled = false; // Включаем кнопку
+
+                  btn.addEventListener('click', function() {
+                      if (parseInt(this.value) === correctAnswer) {
+                          this.classList.add('correct');
+                          questionEl.textContent = "Верно! Мур-мур!";
+                          questionEl.style.color = "#2e7d32";
+                      } else {
+                          this.classList.add('wrong');
+                          questionEl.textContent = `Упс! Было ${correctAnswer} кота.`;
+                          questionEl.style.color = "#c62828";
+                      }
+                      // Блокируем все кнопки после ответа
+                      document.querySelectorAll('#numbers button').forEach(b => b.disabled = true);
+                      // Перезапускаем игру через 2 секунды
+                      setTimeout(startGame, 2000);
+                  });
+                  numbersEl.appendChild(btn);
+              }
+         }
+
+         // Запускаем игру при загрузке страницы
+         startGame();
+    </script>
+</body>
+</html>
