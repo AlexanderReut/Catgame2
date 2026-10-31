@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Соедини по цифрам</title>
+<title>Соедини пары</title>
 <style>
   body { margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center;
          font-family:'Segoe UI',sans-serif; background:linear-gradient(135deg,#1a1a2e,#16213e); color:#eee; }
@@ -11,118 +11,219 @@
   #hud { display:flex; gap:18px; font-size:16px; margin-bottom:8px; }
   #hud span { background:#0f3460; padding:4px 14px; border-radius:20px; }
   canvas { background:#fff; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.5);
-           touch-action:none; cursor:pointer; max-width:95vw; }
-  #msg { height:26px; margin-top:10px; font-size:17px; text-align:center; }
+           touch-action:none; cursor:crosshair; max-width:95vw; }
+  #msg { min-height:26px; margin-top:10px; font-size:17px; text-align:center; }
   button { margin:6px 4px 16px; padding:9px 20px; border:none; border-radius:20px;
            background:#e94560; color:#fff; font-size:15px; cursor:pointer; }
   button:hover { background:#ff6b81; }
 </style>
 </head>
 <body>
-<h1>🎨 Соедини точки по цифрам</h1>
+<h1>🧩 Соедини пары кривыми</h1>
 <div id="hud">
-  <span>Нужна точка: <b id="need">1</b></span>
+  <span>Пары: <b id="cnt">0/0</b></span>
   <span>Ошибки: <b id="err">0</b></span>
 </div>
-<canvas id="cv" width="500" height="500"></canvas>
-<div id="msg">Соединяй точки по порядку!</div>
+<canvas id="cv" width="640" height="480"></canvas>
+<div id="msg">Тяни от точки к точке с той же цифрой. Линии не должны пересекаться!</div>
 <div>
   <button onclick="loadLevel(level-1)">◀ Назад</button>
   <button onclick="restart()">Заново</button>
   <button onclick="loadLevel(level+1)">Вперёд ▶</button>
 </div>
 <script>
-const levels = [
-  { name:"Звезда", pts:[[250,60],[313,252],[485,252],[344,363],[398,495],[250,410],[102,495],[156,363],[15,252],[187,252]] },
-  { name:"Домик", pts:[[250,50],[440,170],[440,450],[60,450],[60,170]] },
-  { name:"Кораблик", pts:[[250,40],[380,180],[300,180],[460,420],[40,420],[200,180],[120,180]] }
+const LEVELS = [
+  { name:"Прогрев", pairs:[
+      [[100,130],[540,170]],
+      [[100,260],[540,220]],
+      [[100,390],[540,390]] ]},
+  { name:"Обход", pairs:[
+      [[150,150],[490,150]],
+      [[150,330],[490,330]],
+      [[320,80],[320,400]] ]},
+  { name:"Прыжок", pairs:[
+      [[110,90],[530,90]],
+      [[110,390],[530,390]],
+      [[300,160],[340,320]],
+      [[180,240],[460,240]] ]},
+  { name:"Паутина", pairs:[
+      [[100,90],[540,90]],
+      [[100,390],[540,390]],
+      [[250,160],[250,330]],
+      [[390,160],[390,330]],
+      [[150,250],[490,250]] ]}
 ];
-const COLORS = ["#e63946","#f77f00","#fcbf49","#2a9d8f","#4361ee","#9d4edd","#e63946","#f77f00","#fcbf49","#2a9d8f","#4361ee","#9d4edd"];
-let level=0, pts=[], need=1, err=0, R=22, shake=0, done=false, cw=500, ch=500;
-const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-const msg=document.getElementById('msg');
+const COLORS = ["#e63946","#457b9d","#2a9d8f","#f4a261","#9d4edd"];
+const DOT_R = 16, HIT = 26, GAP = 5, W = 640, H = 480;
+let level = 0, pairs = [], doneList = [], curves = [], drag = null, flash = null, err = 0;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const msg = document.getElementById('msg');
 
 function resize(){
-  const w=Math.min(cv.parentElement.clientWidth*0.95,520);
-  cv.style.width=w+'px'; cv.style.height=w+'px';
+  const w = Math.min(cv.parentElement.clientWidth * 0.95, 640);
+  cv.style.width = w + 'px';
+  cv.style.height = (w * H / W) + 'px';
 }
-window.addEventListener('resize',()=>{resize();draw();});
+window.addEventListener('resize', () => { resize(); });
 
 function loadLevel(n){
-  if(n<0||n>=levels.length) return;
-  level=n; restart();
-  msg.textContent='Уровень: '+levels[n].name;
+  if(n < 0 || n >= LEVELS.length) return;
+  level = n;
+  restart();
+  msg.textContent = 'Уровень: ' + LEVELS[n].name + '. ' + msg.dataset.hint;
 }
 function restart(){
-  pts=levels[level].pts.map(p=>[...p]);
-  need=1; err=0; done=false; shake=0;
-  document.getElementById('need').textContent=1;
-  document.getElementById('err').textContent=0;
-  draw();
+  pairs = LEVELS[level].pairs.map(p => p.map(q => [...q]));
+  doneList = pairs.map(() => false);
+  curves = []; drag = null; flash = null; err = 0;
+  updateHUD();
+}
+function updateHUD(){
+  document.getElementById('cnt').textContent = doneList.filter(Boolean).length + '/' + pairs.length;
+  document.getElementById('err').textContent = err;
 }
 function pos(e){
-  const r=cv.getBoundingClientRect();
-  const x=(e.clientX??e.touches[0].clientX)-r.left;
-  const y=(e.clientY??e.touches[0].clientY)-r.top;
-  return [x/r.width*cw, y/r.height*ch];
+  const r = cv.getBoundingClientRect();
+  return [ (e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H ];
 }
-function findDot(x,y){
-  for(let i=0;i<pts.length;i++)
-    if((x-pts[i][0])**2+(y-pts[i][1])**2 < (R+14)**2) return i+1;
-  return -1;
-}
-cv.addEventListener('pointerdown',e=>{
-  if(done) return;
-  const [x,y]=pos(e), n=findDot(x,y);
-  if(n===need){
-    if(n>1) drawLine(pts[n-2],pts[n-1],COLORS[n-2]);
-    need++;
-    document.getElementById('need').textContent = need<=pts.length?need:'✔';
-    if(need>pts.length){
-      done=true; draw();
-      msg.textContent='🎉 Готово! «'+levels[level].name+'» собрана!';
+function dotAt(x, y){
+  for(let i = 0; i < pairs.length; i++)
+    for(let j = 0; j < 2; j++){
+      const p = pairs[i][j];
+      if((x - p[0])**2 + (y - p[1])**2 < HIT**2) return { i, j };
     }
-  } else if(n>0){
-    err++; shake=12;
-    document.getElementById('err').textContent=err;
-    msg.textContent='Не та цифра! Нужна '+need;
-  } else {
-    msg.textContent='Тыкай прямо в точки 🙂';
+  return null;
+}
+function cross(o, a, p){ return (a[0]-o[0])*(p[1]-o[1]) - (a[1]-o[1])*(p[0]-o[0]); }
+function segInt(p1, p2, p3, p4){
+  const d1 = cross(p3, p4, p1), d2 = cross(p3, p4, p2);
+  const d3 = cross(p1, p2, p3), d4 = cross(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+         ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+function segments(pts){
+  const s = [];
+  for(let i = 1; i < pts.length; i++) s.push([pts[i-1], pts[i]]);
+  return s;
+}
+function distToSeg(p, a, b){
+  const vx = b[0]-a[0], vy = b[1]-a[1];
+  const t = Math.max(0, Math.min(1, ((p[0]-a[0])*vx + (p[1]-a[1])*vy) / (vx*vx + vy*vy || 1)));
+  return Math.hypot(p[0] - (a[0] + t*vx), p[1] - (a[1] + t*vy));
+}
+
+cv.addEventListener('pointerdown', e => {
+  const [x, y] = pos(e);
+  const d = dotAt(x, y);
+  if(!d){ msg.textContent = 'Тыкай прямо в точку 🙂'; return; }
+  if(doneList[d.i]){ // тап по готовой паре — стираем её линию
+    doneList[d.i] = false;
+    curves = curves.filter(c => c.i !== d.i);
+    updateHUD();
+    msg.textContent = 'Линию стёрли, можно рисовать заново';
   }
+  drag = { i: d.i, j: d.j, pts: [[x, y]] };
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => {
+  if(!drag) return;
+  const [x, y] = pos(e);
+  const last = drag.pts[drag.pts.length - 1];
+  if(Math.hypot(x - last[0], y - last[1]) >= GAP) drag.pts.push([x, y]);
+});
+cv.addEventListener('pointerup', e => {
+  if(!drag) return;
+  const i = drag.i, partner = pairs[i][1 - drag.j];
+  const end = drag.pts[drag.pts.length - 1];
+  const near = Math.hypot(end[0] - partner[0], end[1] - partner[1]) < HIT;
+  if(!near){
+    flash = { pts: drag.pts, t: Date.now() };
+    drag = null;
+    msg.textContent = 'Веди линию до парной точки с той же цифрой!';
+    return;
+  }
+  const segs = segments(drag.pts);
+  let bad = null;
+  // не задеваем чужие точки
+  outer:
+  for(let k = 0; k < pairs.length; k++){
+    if(k === i) continue;
+    for(const p of pairs[k])
+      for(const s of segs)
+        if(distToSeg(p, s[0], s[1]) < DOT_R + 6){ bad = 'Линия задевает другую точку!'; break outer; }
+  }
+  // не пересекаем проведённые линии
+  if(!bad) outer2:
+  for(const c of curves)
+    for(const s of segments(c.pts))
+      for(const t of segs)
+        if(segInt(s[0], s[1], t[0], t[1])){ bad = 'Линии пересекаются! Нужен другой путь ❌'; break outer2; }
+  // не пересекаем сами себя
+  if(!bad)
+    for(let a = 0; a < segs.length && !bad; a++)
+      for(let b = a + 2; b < segs.length; b++)
+        if(segInt(segs[a][0], segs[a][1], segs[b][0], segs[b][1])){
+          bad = 'Линия пересекает саму себя!'; break;
+        }
+  if(bad){
+    err++; updateHUD();
+    flash = { pts: drag.pts, t: Date.now() };
+    msg.textContent = bad;
+  } else {
+    curves.push({ i, pts: drag.pts });
+    doneList[i] = true;
+    updateHUD();
+    if(doneList.every(Boolean))
+      msg.textContent = '🎉 Уровень «' + LEVELS[level].name + '» пройден! Жми «Вперёд»';
+    else
+      msg.textContent = 'Готово! Осталось пар: ' + doneList.filter(d => !d).length;
+  }
+  drag = null;
 });
 
-function drawLine(a,b,c){
-  ctx.strokeStyle=c; ctx.lineWidth=6; ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
-}
-function draw(t){
-  ctx.clearRect(0,0,cw,ch);
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,cw,ch);
-  const off = shake? Math.sin(Date.now()/30)*shake : 0;
-  // прогресс-подсказка: пунктир к следующей точке
-  if(!done && need<=pts.length){
-    const a=need>1?pts[need-2]:pts[0];
-    ctx.save(); ctx.setLineDash([6,8]); ctx.strokeStyle='#bbb'; ctx.lineWidth=2;
-    ctx.beginPath();
-    if(need>1){ctx.moveTo(a[0],a[1]);}else{ctx.moveTo(pts[0][0],pts[0][1]);}
-    ctx.lineTo(pts[need-1][0],pts[need-1][1]); ctx.stroke(); ctx.restore();
+function strokeSmooth(pts, color, width, alpha){
+  if(pts.length < 2) return;
+  ctx.save();
+  ctx.globalAlpha = alpha ?? 1;
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for(let i = 1; i < pts.length - 1; i++){
+    const mx = (pts[i][0] + pts[i+1][0]) / 2, my = (pts[i][1] + pts[i+1][1]) / 2;
+    ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
   }
-  pts.forEach((p,i)=>{
-    const num=i+1, active=(num===need&&!done), passed=num<need;
+  const l = pts[pts.length - 1];
+  ctx.lineTo(l[0], l[1]);
+  ctx.stroke();
+  ctx.restore();
+}
+function draw(){
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  // вспышка неудачной линии
+  if(flash){
+    const k = 1 - (Date.now() - flash.t) / 450;
+    if(k <= 0) flash = null;
+    else strokeSmooth(flash.pts, '#e63946', 7, k * 0.6);
+  }
+  for(const c of curves) strokeSmooth(c.pts, COLORS[c.i], 6);
+  if(drag) strokeSmooth(drag.pts, COLORS[drag.i], 6, 0.55);
+  pairs.forEach((pr, i) => pr.forEach(p => {
     ctx.beginPath();
-    ctx.arc(p[0]+(active?off:0),p[1],R,0,Math.PI*2);
-    ctx.fillStyle = passed?COLORS[i-1]:(active?'#ffd166':'#e9ecef');
+    ctx.arc(p[0], p[1], DOT_R, 0, Math.PI*2);
+    ctx.fillStyle = doneList[i] ? COLORS[i] : '#fff';
     ctx.fill();
-    ctx.lineWidth=3;
-    ctx.strokeStyle = passed?COLORS[i-1]:(active?'#e94560':'#adb5bd');
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = COLORS[i];
     ctx.stroke();
-    ctx.fillStyle = passed?'#fff':(active?'#333':'#555');
-    ctx.font='bold 15px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(num,p[0]+(active?off:0),p[1]);
-  });
-  if(shake>0) shake*=0.85;
+    ctx.fillStyle = doneList[i] ? '#fff' : COLORS[i];
+    ctx.font = 'bold 15px Segoe UI';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, p[0], p[1]);
+  }));
   requestAnimationFrame(draw);
 }
+msg.dataset.hint = msg.textContent;
 resize(); loadLevel(0);
 </script>
 </body>
