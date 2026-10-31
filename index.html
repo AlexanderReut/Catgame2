@@ -1,190 +1,129 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>Считаем котов!</title>
-    <style>
-        body {
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            background-color: #faf0e6;
-            margin: 0;
-            overflow: hidden; /* Убираем скролл */
-            position: relative; /* Точка отсчета для абсолютного позиционирования */
-            height: 100vh;
-        }
-
-        h1 {
-            color: #8b4513;
-            text-align: center;
-            padding-top: 20px;
-            z-index: 3; /* Выше всего остального */
-        }
-
-        #question {
-            text-align: center;
-            font-size: 2em;
-            margin-bottom: 20px;
-            color: #333;
-            z-index: 3; /* Выше котов */
-        }
-
-        /* --- ИЗМЕНЕНИЯ ДЛЯ ЦИФР ---
-           Размещаем блок с цифрами на одну пятую от низа */
-        #numbers {
-            position: fixed;
-            bottom: 20%; /* Одна пятая (20%) от высоты экрана */
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 15px;
-            z-index: 3; /* Выше котов */
-            pointer-events: auto; /* Кнопки кликабельны */
-        }
-
-        button {
-            font-size: 1.6em;
-            padding: 15px 25px;
-            border-radius: 15px;
-            border: none;
-            background-color: #fff8dc;
-            color: #a0522d;
-            cursor: pointer;
-            box-shadow: 0 4px #d2691e;
-            transition: all 0.3s ease;
-        }
-
-        button.correct {
-             background-color: #98fb98;
-             color: #2e7d32;
-             box-shadow: 0 4px #4CAF50;
-        }
-
-        button.wrong {
-             background-color: #ff6347;
-             color: white;
-             box-shadow: 0 4px #FF4500;
-        }
-
-        .cat-picture {
-            position: absolute;
-            width: 150px;
-            height: auto;
-            border-radius: 15px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-            opacity: 0.9;
-            user-select: none;
-            pointer-events: auto;
-            cursor: pointer;
-            transition: transform 0.3s ease;
-        }
-        .cat-picture:hover {
-            transform: scale(1.05);
-            z-index: 10;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Соедини по цифрам</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center;
+         font-family:'Segoe UI',sans-serif; background:linear-gradient(135deg,#1a1a2e,#16213e); color:#eee; }
+  h1 { margin:12px 0 4px; font-size:clamp(18px,4vw,28px); }
+  #hud { display:flex; gap:18px; font-size:16px; margin-bottom:8px; }
+  #hud span { background:#0f3460; padding:4px 14px; border-radius:20px; }
+  canvas { background:#fff; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.5);
+           touch-action:none; cursor:pointer; max-width:95vw; }
+  #msg { height:26px; margin-top:10px; font-size:17px; text-align:center; }
+  button { margin:6px 4px 16px; padding:9px 20px; border:none; border-radius:20px;
+           background:#e94560; color:#fff; font-size:15px; cursor:pointer; }
+  button:hover { background:#ff6b81; }
+</style>
 </head>
 <body>
+<h1>🎨 Соедини точки по цифрам</h1>
+<div id="hud">
+  <span>Нужна точка: <b id="need">1</b></span>
+  <span>Ошибки: <b id="err">0</b></span>
+</div>
+<canvas id="cv" width="500" height="500"></canvas>
+<div id="msg">Соединяй точки по порядку!</div>
+<div>
+  <button onclick="loadLevel(level-1)">◀ Назад</button>
+  <button onclick="restart()">Заново</button>
+  <button onclick="loadLevel(level+1)">Вперёд ▶</button>
+</div>
+<script>
+const levels = [
+  { name:"Звезда", pts:[[250,60],[313,252],[485,252],[344,363],[398,495],[250,410],[102,495],[156,363],[15,252],[187,252]] },
+  { name:"Домик", pts:[[250,50],[440,170],[440,450],[60,450],[60,170]] },
+  { name:"Кораблик", pts:[[250,40],[380,180],[300,180],[460,420],[40,420],[200,180],[120,180]] }
+];
+const COLORS = ["#e63946","#f77f00","#fcbf49","#2a9d8f","#4361ee","#9d4edd","#e63946","#f77f00","#fcbf49","#2a9d8f","#4361ee","#9d4edd"];
+let level=0, pts=[], need=1, err=0, R=22, shake=0, done=false, cw=500, ch=500;
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const msg=document.getElementById('msg');
 
-    <h1>Считаем котов!</h1>
-    <div id="game-container"></div>
-    <div id="question">Сколько котов на крыше?</div>
-    <div id="numbers"></div>
+function resize(){
+  const w=Math.min(cv.parentElement.clientWidth*0.95,520);
+  cv.style.width=w+'px'; cv.style.height=w+'px';
+}
+window.addEventListener('resize',()=>{resize();draw();});
 
-    <script>
-        const gameContainer = document.getElementById('game-container');
-        const questionEl = document.getElementById('question');
-        const numbersEl = document.getElementById('numbers');
+function loadLevel(n){
+  if(n<0||n>=levels.length) return;
+  level=n; restart();
+  msg.textContent='Уровень: '+levels[n].name;
+}
+function restart(){
+  pts=levels[level].pts.map(p=>[...p]);
+  need=1; err=0; done=false; shake=0;
+  document.getElementById('need').textContent=1;
+  document.getElementById('err').textContent=0;
+  draw();
+}
+function pos(e){
+  const r=cv.getBoundingClientRect();
+  const x=(e.clientX??e.touches[0].clientX)-r.left;
+  const y=(e.clientY??e.touches[0].clientY)-r.top;
+  return [x/r.width*cw, y/r.height*ch];
+}
+function findDot(x,y){
+  for(let i=0;i<pts.length;i++)
+    if((x-pts[i][0])**2+(y-pts[i][1])**2 < (R+14)**2) return i+1;
+  return -1;
+}
+cv.addEventListener('pointerdown',e=>{
+  if(done) return;
+  const [x,y]=pos(e), n=findDot(x,y);
+  if(n===need){
+    if(n>1) drawLine(pts[n-2],pts[n-1],COLORS[n-2]);
+    need++;
+    document.getElementById('need').textContent = need<=pts.length?need:'✔';
+    if(need>pts.length){
+      done=true; draw();
+      msg.textContent='🎉 Готово! «'+levels[level].name+'» собрана!';
+    }
+  } else if(n>0){
+    err++; shake=12;
+    document.getElementById('err').textContent=err;
+    msg.textContent='Не та цифра! Нужна '+need;
+  } else {
+    msg.textContent='Тыкай прямо в точки 🙂';
+  }
+});
 
-        let correctAnswer = Math.floor(Math.random() * (9 - 1 + 1)) + 1;
-        const catSize = 150; // Размер кота в пикселях
-
-        const catImageLinks = [
-             'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota52.png',
-    'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota46.png',
-    'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota44.png',
-'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota39.png',
-'https://www.youloveit.ru/uploads/gallery/thumb/995/youloveit_ru_kartinki_tri_kota37.png'
-        ];
-
-        function startGame() {
-             gameContainer.innerHTML = '';
-             numbersEl.innerHTML = '';
-             questionEl.textContent = "Сколько котов на крыше?";
-             questionEl.style.color = "#333";
-             correctAnswer = Math.floor(Math.random() * (9 - 1 + 1)) + 1;
-
-             const placedCats = []; // Массив для хранения позиций уже размещенных котов
-
-             for (let i = 0; i < correctAnswer; i++) {
-                  let validPositionFound = false;
-                  let newCatPos;
-
-                  // Пробуем найти место, где кот не будет пересекаться с другими
-                  while (!validPositionFound) {
-                      const xPos = Math.random() * (window.innerWidth - catSize);
-                      const yPos = Math.random() * (window.innerHeight - catSize - window.innerHeight / 5); // Не залезаем на зону цифр
-
-                      newCatPos = {x: xPos, y: yPos};
-
-                      // Проверяем пересечение с уже размещенными котами
-                      if (placedCats.length === 0) {
-                          validPositionFound = true; // Если это первый кот, место всегда валидно
-                      } else {
-                          let noCollision = true;
-                          for (const pos of placedCats) {
-                              // Простая проверка по квадрату (AABB)
-                              if (
-                                  newCatPos.x < pos.x + catSize &&
-                                  newCatPos.x + catSize > pos.x &&
-                                  newCatPos.y < pos.y + catSize &&
-                                  newCatPos.y + catSize > pos.y
-                              ) {
-                                  noCollision = false;
-                                  break; // Нашли пересечение, выходим из цикла проверки
-                              }
-                          }
-                          validPositionFound = noCollision;
-                      }
-                  }
-
-                  // Позиция найдена, добавляем её в массив
-                  placedCats.push(newCatPos);
-
-                  const randomIndex = Math.floor(Math.random() * catImageLinks.length);
-                  const imgSrc = catImageLinks[randomIndex];
-
-                  const catImg = document.createElement('img');
-                  catImg.src = imgSrc;
-                  catImg.classList.add('cat-picture');
-                  catImg.style.left = `${newCatPos.x}px`;
-                  catImg.style.top = `${newCatPos.y}px`;
-
-                  gameContainer.appendChild(catImg);
-             }
-
-             for (let num = 1; num <= 9; num++) {
-                  const btn = document.createElement('button');
-                  btn.textContent = num;
-                  btn.value = num;
-
-                  btn.addEventListener('click', function() {
-                      if (parseInt(this.value) === correctAnswer) {
-                          this.classList.add('correct');
-                          questionEl.textContent = "Верно!";
-                          questionEl.style.color = "#2e7d32";
-                      } else {
-                          this.classList.add('wrong');
-                          questionEl.textContent = `Упс! Было ${correctAnswer}.`;
-                          questionEl.style.color = "#c62828";
-                      }
-                      document.querySelectorAll('#numbers button').forEach(b => b.disabled = true);
-                      setTimeout(startGame, 2000);
-                  });
-                  numbersEl.appendChild(btn);
-              }
-         }
-
-         startGame();
-    </script>
+function drawLine(a,b,c){
+  ctx.strokeStyle=c; ctx.lineWidth=6; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+}
+function draw(t){
+  ctx.clearRect(0,0,cw,ch);
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,cw,ch);
+  const off = shake? Math.sin(Date.now()/30)*shake : 0;
+  // прогресс-подсказка: пунктир к следующей точке
+  if(!done && need<=pts.length){
+    const a=need>1?pts[need-2]:pts[0];
+    ctx.save(); ctx.setLineDash([6,8]); ctx.strokeStyle='#bbb'; ctx.lineWidth=2;
+    ctx.beginPath();
+    if(need>1){ctx.moveTo(a[0],a[1]);}else{ctx.moveTo(pts[0][0],pts[0][1]);}
+    ctx.lineTo(pts[need-1][0],pts[need-1][1]); ctx.stroke(); ctx.restore();
+  }
+  pts.forEach((p,i)=>{
+    const num=i+1, active=(num===need&&!done), passed=num<need;
+    ctx.beginPath();
+    ctx.arc(p[0]+(active?off:0),p[1],R,0,Math.PI*2);
+    ctx.fillStyle = passed?COLORS[i-1]:(active?'#ffd166':'#e9ecef');
+    ctx.fill();
+    ctx.lineWidth=3;
+    ctx.strokeStyle = passed?COLORS[i-1]:(active?'#e94560':'#adb5bd');
+    ctx.stroke();
+    ctx.fillStyle = passed?'#fff':(active?'#333':'#555');
+    ctx.font='bold 15px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(num,p[0]+(active?off:0),p[1]);
+  });
+  if(shake>0) shake*=0.85;
+  requestAnimationFrame(draw);
+}
+resize(); loadLevel(0);
+</script>
 </body>
 </html>
