@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Соедини точки по цифрам</title>
+<title>Соедини точки: рисуй кривые сам</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -19,13 +19,16 @@
     color: #eaf2f8;
   }
   h1 { font-size: 22px; margin: 0; }
-  .panel {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: center;
+  #status { min-height: 24px; font-weight: 600; text-align: center; padding: 0 12px; }
+  canvas {
+    background: #f6f7fb;
+    border-radius: 16px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.35);
+    touch-action: none;
+    max-width: 94vw;
+    cursor: crosshair;
   }
+  .panel { display: flex; gap: 10px; }
   button {
     border: 0;
     border-radius: 10px;
@@ -33,23 +36,15 @@
     font-weight: 700;
     cursor: pointer;
     background: #2f80ed;
-    color: white;
+    color: #fff;
   }
   button:hover { background: #1f6fd6; }
-  #status { min-height: 24px; font-weight: 600; }
-  canvas {
-    background: #f6f7fb;
-    border-radius: 16px;
-    box-shadow: 0 12px 30px rgba(0,0,0,.35);
-    touch-action: none;
-    max-width: 94vw;
-  }
 </style>
 </head>
 <body>
   <h1>Соедини точки по цифрам</h1>
-  <div id="status">Выберите точку, затем её пару с такой же цифрой.</div>
-  <canvas id="game" width="720" height="520"></canvas>
+  <div id="status">Зажми точку и нарисуй кривую до точки с такой же цифрой.</div>
+  <canvas id="game" width="760" height="540"></canvas>
   <div class="panel">
     <button id="restart">Новая игра</button>
     <button id="undo">Отменить линию</button>
@@ -67,9 +62,8 @@ const COLORS = [
 
 let dots = [];
 let connections = [];
-let selected = null;
+let drawing = null; // { start, current }
 let hoverDot = null;
-let mouse = { x: 0, y: 0 };
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -78,23 +72,23 @@ function randomInt(min, max) {
 function generateLevel(pairCount = 5) {
   dots = [];
   connections = [];
-  selected = null;
+  drawing = null;
 
-  const margin = 70;
-  const width = canvas.width;
-  const height = canvas.height;
+  const margin = 75;
+  const w = canvas.width;
+  const h = canvas.height;
 
   for (let n = 1; n <= pairCount; n++) {
     for (let k = 0; k < 2; k++) {
       let p, ok = false, guard = 0;
 
-      while (!ok && guard++ < 500) {
+      while (!ok && guard++ < 800) {
         p = {
-          x: randomInt(margin, width - margin),
-          y: randomInt(margin, height - margin),
+          x: randomInt(margin, w - margin),
+          y: randomInt(margin, h - margin),
           n
         };
-        ok = dots.every(d => Math.hypot(d.x - p.x, d.y - p.y) > 85);
+        ok = dots.every(d => Math.hypot(d.x - p.x, d.y - p.y) > 90);
       }
 
       dots.push(p);
@@ -103,66 +97,68 @@ function generateLevel(pairCount = 5) {
 }
 
 function dotAt(x, y) {
-  return dots.find(d => Math.hypot(d.x - x, d.y - y) <= 26);
+  return dots.find(d => Math.hypot(d.x - x, d.y - y) <= 28);
 }
 
-function bezierPoints(a, b) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const dist = Math.hypot(dx, dy) || 1;
+function buildCurve(start, end, pointer) {
+  // Кривая тянется вслед за курсором:
+  // контрольные точки смещаются к положению руки.
+  const mx = (start.x + end.x) / 2;
+  const my = (start.y + end.y) / 2;
 
-  // Перпендикуляр к прямой между точками
-  const nx = -dy / dist;
-  const ny = dx / dist;
-
-  const bend = Math.min(120, dist * 0.35);
-  const dir = Math.random() < 0.5 ? 1 : -1;
+  const pull = 0.55;
 
   const c1 = {
-    x: a.x + dx * 0.28 + nx * bend * dir,
-    y: a.y + dy * 0.28 + ny * bend * dir
-  };
-  const c2 = {
-    x: a.x + dx * 0.72 + nx * bend * dir,
-    y: a.y + dy * 0.72 + ny * bend * dir
+    x: start.x + (pointer.x - start.x) * pull,
+    y: start.y + (pointer.y - start.y) * pull
   };
 
-  return [c1, c2];
+  const c2 = {
+    x: end.x + (pointer.x - end.x) * pull,
+    y: end.y + (pointer.y - end.y) * pull
+  };
+
+  return { start, end, c1, c2 };
 }
 
-function sampleBezier(p0, c1, c2, p1, steps = 80) {
-  const pts = [];
+function sampleCurve(curve, steps = 90) {
+  const { start: p0, c1, c2, end: p3 } = curve;
+  const points = [];
+
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const mt = 1 - t;
-    const x =
-      mt ** 3 * p0.x +
-      3 * mt ** 2 * t * c1.x +
-      3 * mt * t ** 2 * c2.x +
-      t ** 3 * p1.x;
-    const y =
-      mt ** 3 * p0.y +
-      3 * mt ** 2 * t * c1.y +
-      3 * mt * t ** 2 * c2.y +
-      t ** 3 * p1.y;
-    pts.push({ x, y });
+
+    points.push({
+      x:
+        mt ** 3 * p0.x +
+        3 * mt ** 2 * t * c1.x +
+        3 * mt * t ** 2 * c2.x +
+        t ** 3 * p3.x,
+      y:
+        mt ** 3 * p0.y +
+        3 * mt ** 2 * t * c1.y +
+        3 * mt * t ** 2 * c2.y +
+        t ** 3 * p3.y
+    });
   }
-  return pts;
+
+  return points;
 }
 
 function segmentsIntersect(a, b, c, d) {
-  const denominator = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
-  if (Math.abs(denominator) < 1e-9) return false;
+  const denom = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+  if (Math.abs(denom) < 1e-9) return false;
 
-  const t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / denominator;
-  const u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / denominator;
+  const t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / denom;
+  const u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / denom;
 
-  return t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999;
+  return t > 0.005 && t < 0.995 && u > 0.005 && u < 0.995;
 }
 
-function curvesIntersect(newConn, existingConn) {
-  const a = sampleBezier(newConn.a, newConn.c1, newConn.c2, newConn.b, 60);
-  const b = sampleBezier(existingConn.a, existingConn.c1, existingConn.c2, existingConn.b, 60);
+function curvesIntersect(curveA, curveB) {
+  const a = sampleCurve(curveA, 70);
+  const b = sampleCurve(curveB, 70);
 
   for (let i = 0; i < a.length - 1; i++) {
     for (let j = 0; j < b.length - 1; j++) {
@@ -171,67 +167,131 @@ function curvesIntersect(newConn, existingConn) {
       }
     }
   }
+
   return false;
 }
 
-function tryConnect(dot) {
-  if (!selected) return;
+function pointerPos(event) {
+  const rect = canvas.getBoundingClientRect();
+  const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+  const clientY = event.touches ? event.touches[0].clientY : event.clientY;
 
-  if (selected === dot) {
-    selected = null;
-    statusEl.textContent = 'Выбор отменён.';
+  return {
+    x: (clientX - rect.left) * (canvas.width / rect.width),
+    y: (clientY - rect.top) * (canvas.height / rect.height)
+  };
+}
+
+function startDrawing(event) {
+  const p = pointerPos(event);
+  const dot = dotAt(p.x, p.y);
+
+  if (!dot) return;
+
+  drawing = {
+    start: dot,
+    current: p,
+    valid: true
+  };
+
+  statusEl.textContent = `Рисуйте линию от цифры ${dot.n} к такой же цифре.`;
+  draw();
+}
+
+function moveDrawing(event) {
+  const p = pointerPos(event);
+  hoverDot = dotAt(p.x, p.y);
+
+  if (!drawing) {
+    canvas.style.cursor = hoverDot ? 'pointer' : 'crosshair';
+    draw();
     return;
   }
 
-  if (selected.n !== dot.n) {
-    statusEl.textContent = `Нужно соединить две точки с цифрой ${selected.n}.`;
-    selected = null;
-    return;
-  }
+  drawing.current = p;
 
-  const alreadyUsed = connections.some(
-    c => (c.a === selected && c.b === dot) || (c.a === dot && c.b === selected)
+  const candidate = buildCurve(drawing.start, drawing.start, p);
+
+  // Пока ведём линию, проверяем пересечения со всеми проведёнными кривыми.
+  drawing.valid = !connections.some(existing =>
+    curvesIntersect(candidate, existing)
   );
 
-  if (alreadyUsed) {
+  draw();
+}
+
+function finishDrawing(event) {
+  if (!drawing) return;
+
+  const p = pointerPos(event);
+  const endDot = dotAt(p.x, p.y);
+  const startDot = drawing.start;
+
+  const candidate = buildCurve(startDot, endDot || startDot, p);
+
+  const crosses = connections.some(existing =>
+    curvesIntersect(candidate, existing)
+  );
+
+  if (!endDot) {
+    statusEl.textContent = 'Линию нужно закончить на точке с цифрой.';
+  } else if (endDot === startDot) {
+    statusEl.textContent = 'Нельзя соединить точку с самой собой.';
+  } else if (endDot.n !== startDot.n) {
+    statusEl.textContent = `Цифры разные: ${startDot.n} и ${endDot.n}.`;
+  } else if (connections.some(c =>
+    (c.start === startDot && c.end === endDot) ||
+    (c.start === endDot && c.end === startDot)
+  )) {
     statusEl.textContent = 'Эта пара уже соединена.';
-    selected = null;
-    return;
-  }
-
-  const [c1, c2] = bezierPoints(selected, dot);
-  const candidate = { a: selected, b: dot, c1, c2, n: selected.n };
-
-  const crosses = connections.some(conn => curvesIntersect(candidate, conn));
-
-  if (crosses) {
-    statusEl.textContent = 'Линии пересекаются! Попробуйте другую пару.';
-    selected = null;
-    return;
-  }
-
-  connections.push(candidate);
-  selected = null;
-
-  if (connections.length === dots.length / 2) {
-    statusEl.textContent = 'Победа! Все пары соединены без пересечений.';
+  } else if (crosses) {
+    statusEl.textContent = 'Линии пересекаются — соединение не принято.';
   } else {
-    statusEl.textContent = `Отлично! Осталось пар: ${dots.length / 2 - connections.length}.`;
+    connections.push(candidate);
+
+    if (connections.length === dots.length / 2) {
+      statusEl.textContent = 'Победа! Все пары соединены без пересечений.';
+    } else {
+      statusEl.textContent = `Готово! Осталось пар: ${dots.length / 2 - connections.length}.`;
+    }
   }
+
+  drawing = null;
+  draw();
+}
+
+function drawCurve(curve, color, width, dashed = false) {
+  ctx.beginPath();
+  ctx.moveTo(curve.start.x, curve.start.y);
+  ctx.bezierCurveTo(
+    curve.c1.x, curve.c1.y,
+    curve.c2.x, curve.c2.y,
+    curve.end.x, curve.end.y
+  );
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+
+  if (dashed) ctx.setLineDash([12, 9]);
+  ctx.stroke();
+  if (dashed) ctx.setLineDash([]);
 }
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Сетка
+  // Фоновая сетка
   ctx.strokeStyle = '#dde3ec';
   ctx.lineWidth = 1;
+
   for (let x = 40; x < canvas.width; x += 40) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, canvas.height);
     ctx.stroke();
   }
+
   for (let y = 40; y < canvas.height; y += 40) {
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -239,98 +299,66 @@ function draw() {
     ctx.stroke();
   }
 
-  // Проведённые кривые
+  // Готовые линии
   connections.forEach(conn => {
-    ctx.beginPath();
-    ctx.moveTo(conn.a.x, conn.a.y);
-    ctx.bezierCurveTo(conn.c1.x, conn.c1.y, conn.c2.x, conn.c2.y, conn.b.x, conn.b.y);
-    ctx.strokeStyle = COLORS[(conn.n - 1) % COLORS.length];
-    ctx.lineWidth = 7;
-    ctx.lineCap = 'round';
-    ctx.stroke();
+    const color = COLORS[(conn.start.n - 1) % COLORS.length];
+    drawCurve(conn, color, 8);
   });
 
-  // Предпросмотр
-  if (selected && hoverDot && hoverDot !== selected) {
-    const [c1, c2] = bezierPoints(selected, hoverDot);
+  // Текущая рисуемая линия
+  if (drawing) {
+    const color = COLORS[(drawing.start.n - 1) % COLORS.length];
+    const preview = buildCurve(drawing.start, drawing.start, drawing.current);
+
     ctx.save();
-    ctx.globalAlpha = 0.45;
-    ctx.beginPath();
-    ctx.moveTo(selected.x, selected.y);
-    ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, hoverDot.x, hoverDot.y);
-    ctx.strokeStyle = COLORS[(selected.n - 1) % COLORS.length];
-    ctx.lineWidth = 6;
-    ctx.setLineDash([10, 8]);
-    ctx.stroke();
+    ctx.globalAlpha = drawing.valid ? 0.75 : 0.9;
+    drawCurve(
+      preview,
+      drawing.valid ? color : '#cc0000',
+      7,
+      !drawing.valid
+    );
     ctx.restore();
   }
 
   // Точки
   dots.forEach(dot => {
     const color = COLORS[(dot.n - 1) % COLORS.length];
-    const isSelected = dot === selected;
+    const isStart = drawing && drawing.start === dot;
+    const isHover = hoverDot === dot;
 
     ctx.beginPath();
-    ctx.arc(dot.x, dot.y, isSelected ? 25 : 21, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.arc(dot.x, dot.y, isStart || isHover ? 27 : 22, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
     ctx.fill();
-    ctx.lineWidth = isSelected ? 6 : 4;
+    ctx.lineWidth = isStart ? 7 : 4;
     ctx.strokeStyle = color;
     ctx.stroke();
 
     ctx.fillStyle = color;
-    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.font = 'bold 21px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(dot.n, dot.x, dot.y + 1);
   });
 }
 
-function pointerPosition(event) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  const clientX = event.touches ? event.touches[0].clientX : event.clientX;
-  const clientY = event.touches ? event.touches[0].clientY : event.clientY;
-  return {
-    x: (clientX - rect.left) * scaleX,
-    y: (clientY - rect.top) * scaleY
-  };
-}
-
-canvas.addEventListener('pointermove', event => {
-  const p = pointerPosition(event);
-  mouse = p;
-  hoverDot = dotAt(p.x, p.y);
-  canvas.style.cursor = hoverDot ? 'pointer' : 'default';
-  draw();
-});
-
-canvas.addEventListener('pointerdown', event => {
-  const p = pointerPosition(event);
-  const dot = dotAt(p.x, p.y);
-
-  if (!dot) return;
-
-  if (!selected) {
-    selected = dot;
-    statusEl.textContent = `Выбрана цифра ${dot.n}. Выберите вторую такую же точку.`;
-  } else {
-    tryConnect(dot);
-  }
-
+canvas.addEventListener('pointerdown', startDrawing);
+canvas.addEventListener('pointermove', moveDrawing);
+canvas.addEventListener('pointerup', finishDrawing);
+canvas.addEventListener('pointercancel', () => {
+  drawing = null;
   draw();
 });
 
 document.getElementById('restart').addEventListener('click', () => {
   generateLevel();
-  statusEl.textContent = 'Выберите точку, затем её пару с такой же цифрой.';
+  statusEl.textContent = 'Зажми точку и нарисуй кривую до точки с такой же цифрой.';
   draw();
 });
 
 document.getElementById('undo').addEventListener('click', () => {
   connections.pop();
-  selected = null;
   statusEl.textContent = 'Последняя линия отменена.';
   draw();
 });
