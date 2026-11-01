@@ -1,370 +1,124 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Соедини точки: рисуй кривые сам</title>
-<style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    font-family: system-ui, sans-serif;
-    background: #101418;
-    color: #eaf2f8;
-  }
-  h1 { font-size: 22px; margin: 0; }
-  #status { min-height: 24px; font-weight: 600; text-align: center; padding: 0 12px; }
-  canvas {
-    background: #f6f7fb;
-    border-radius: 16px;
-    box-shadow: 0 12px 30px rgba(0,0,0,.35);
-    touch-action: none;
-    max-width: 94vw;
-    cursor: crosshair;
-  }
-  .panel { display: flex; gap: 10px; }
-  button {
-    border: 0;
-    border-radius: 10px;
-    padding: 10px 16px;
-    font-weight: 700;
-    cursor: pointer;
-    background: #2f80ed;
-    color: #fff;
-  }
-  button:hover { background: #1f6fd6; }
-</style>
+  <meta charset="UTF-8">
+  <title>Поезд едет по рельсам</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f0f4f8;
+      font-family: Arial, sans-serif;
+    }
+
+    .scene {
+      width: 100%;
+      max-width: 800px;
+      height: 200px;
+      overflow: hidden;
+      position: relative;
+      border: 4px solid #333;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    /* Рельсы */
+    .rails {
+      position: absolute;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background-color: #555;
+      z-index: 1;
+    }
+    .ties {
+      position: absolute;
+      bottom: 16px;
+      left: 0;
+      width: 100%;
+      height: 12px;
+      background-image: repeating-linear-gradient(
+        90deg,
+        transparent 0 60px,
+        #333 60px 64px
+      );
+      z-index: 2;
+    }
+
+    /* Поезд */
+    .train {
+      position: absolute;
+      bottom: 30px; /* чуть выше рельс */
+      left: -200px;
+      display: flex;
+      animation: moveTrain 12s linear infinite;
+      z-index: 3;
+    }
+
+    .car {
+      width: 90px;
+      height: 60px;
+      background: #d9534f;
+      margin-right: 4px;
+      border-radius: 4px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+      position: relative;
+    }
+    .car:first-child {
+      background: #337ab7; /* локомотив */
+      width: 110px;
+    }
+    .window {
+      position: absolute;
+      top: 14px;
+      left: 12px;
+      width: 24px;
+      height: 28px;
+      background: #fff;
+      border-radius: 2px;
+    }
+    .smoke {
+      position: absolute;
+      top: -12px;
+      right: -4px;
+      width: 36px;
+      height: 24px;
+      background: radial-gradient(circle, #ccc 20%, transparent 60%);
+      filter: blur(4px);
+      opacity: 0.8;
+      transform: translateX(10px);
+      animation: smokeMove 1.2s infinite ease-in-out;
+    }
+
+    @keyframes moveTrain {
+      0% { transform: translateX(-200px); }
+      100% { transform: translateX(110vw); }
+    }
+
+    @keyframes smokeMove {
+      0%, 100% { opacity: 0.6; transform: translateY(0) scale(1); }
+      50% { opacity: 0.9; transform: translateY(-12px) scale(1.15); }
+    }
+  </style>
 </head>
 <body>
-  <h1>Соедини точки по цифрам</h1>
-  <div id="status">Зажми точку и нарисуй кривую до точки с такой же цифрой.</div>
-  <canvas id="game" width="760" height="540"></canvas>
-  <div class="panel">
-    <button id="restart">Новая игра</button>
-    <button id="undo">Отменить линию</button>
+
+  <h2>Поезд едет по рельсам</h2>
+  <div class="scene">
+    <div class="rails"></div>
+    <div class="ties"></div>
+    <div class="train">
+      <!-- Локомотив -->
+      <div class="car" style="background:#337ab7;">
+        <div class="window" style="left:18px;"></div>
+      </div>
+      <!-- Вагоны -->
+      <div class="car"><div class="window"></div></div>
+      <div class="car"><div class="window"></div></div>
+      <div class="car"><div class="window"></div></div>
+    </div>
   </div>
 
-<script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-const statusEl = document.getElementById('status');
-
-const COLORS = [
-  '#e63946', '#2a9d8f', '#457b9d', '#f4a261',
-  '#9b5de5', '#00b4d8', '#e76f51', '#80ed99'
-];
-
-let dots = [];
-let connections = [];
-let drawing = null; // { start, current }
-let hoverDot = null;
-
-function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function generateLevel(pairCount = 5) {
-  dots = [];
-  connections = [];
-  drawing = null;
-
-  const margin = 75;
-  const w = canvas.width;
-  const h = canvas.height;
-
-  for (let n = 1; n <= pairCount; n++) {
-    for (let k = 0; k < 2; k++) {
-      let p, ok = false, guard = 0;
-
-      while (!ok && guard++ < 800) {
-        p = {
-          x: randomInt(margin, w - margin),
-          y: randomInt(margin, h - margin),
-          n
-        };
-        ok = dots.every(d => Math.hypot(d.x - p.x, d.y - p.y) > 90);
-      }
-
-      dots.push(p);
-    }
-  }
-}
-
-function dotAt(x, y) {
-  return dots.find(d => Math.hypot(d.x - x, d.y - y) <= 28);
-}
-
-function buildCurve(start, end, pointer) {
-  // Кривая тянется вслед за курсором:
-  // контрольные точки смещаются к положению руки.
-  const mx = (start.x + end.x) / 2;
-  const my = (start.y + end.y) / 2;
-
-  const pull = 0.55;
-
-  const c1 = {
-    x: start.x + (pointer.x - start.x) * pull,
-    y: start.y + (pointer.y - start.y) * pull
-  };
-
-  const c2 = {
-    x: end.x + (pointer.x - end.x) * pull,
-    y: end.y + (pointer.y - end.y) * pull
-  };
-
-  return { start, end, c1, c2 };
-}
-
-function sampleCurve(curve, steps = 90) {
-  const { start: p0, c1, c2, end: p3 } = curve;
-  const points = [];
-
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const mt = 1 - t;
-
-    points.push({
-      x:
-        mt ** 3 * p0.x +
-        3 * mt ** 2 * t * c1.x +
-        3 * mt * t ** 2 * c2.x +
-        t ** 3 * p3.x,
-      y:
-        mt ** 3 * p0.y +
-        3 * mt ** 2 * t * c1.y +
-        3 * mt * t ** 2 * c2.y +
-        t ** 3 * p3.y
-    });
-  }
-
-  return points;
-}
-
-function segmentsIntersect(a, b, c, d) {
-  const denom = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
-  if (Math.abs(denom) < 1e-9) return false;
-
-  const t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / denom;
-  const u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / denom;
-
-  return t > 0.005 && t < 0.995 && u > 0.005 && u < 0.995;
-}
-
-function curvesIntersect(curveA, curveB) {
-  const a = sampleCurve(curveA, 70);
-  const b = sampleCurve(curveB, 70);
-
-  for (let i = 0; i < a.length - 1; i++) {
-    for (let j = 0; j < b.length - 1; j++) {
-      if (segmentsIntersect(a[i], a[i + 1], b[j], b[j + 1])) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-function pointerPos(event) {
-  const rect = canvas.getBoundingClientRect();
-  const clientX = event.touches ? event.touches[0].clientX : event.clientX;
-  const clientY = event.touches ? event.touches[0].clientY : event.clientY;
-
-  return {
-    x: (clientX - rect.left) * (canvas.width / rect.width),
-    y: (clientY - rect.top) * (canvas.height / rect.height)
-  };
-}
-
-function startDrawing(event) {
-  const p = pointerPos(event);
-  const dot = dotAt(p.x, p.y);
-
-  if (!dot) return;
-
-  drawing = {
-    start: dot,
-    current: p,
-    valid: true
-  };
-
-  statusEl.textContent = `Рисуйте линию от цифры ${dot.n} к такой же цифре.`;
-  draw();
-}
-
-function moveDrawing(event) {
-  const p = pointerPos(event);
-  hoverDot = dotAt(p.x, p.y);
-
-  if (!drawing) {
-    canvas.style.cursor = hoverDot ? 'pointer' : 'crosshair';
-    draw();
-    return;
-  }
-
-  drawing.current = p;
-
-  const candidate = buildCurve(drawing.start, drawing.start, p);
-
-  // Пока ведём линию, проверяем пересечения со всеми проведёнными кривыми.
-  drawing.valid = !connections.some(existing =>
-    curvesIntersect(candidate, existing)
-  );
-
-  draw();
-}
-
-function finishDrawing(event) {
-  if (!drawing) return;
-
-  const p = pointerPos(event);
-  const endDot = dotAt(p.x, p.y);
-  const startDot = drawing.start;
-
-  const candidate = buildCurve(startDot, endDot || startDot, p);
-
-  const crosses = connections.some(existing =>
-    curvesIntersect(candidate, existing)
-  );
-
-  if (!endDot) {
-    statusEl.textContent = 'Линию нужно закончить на точке с цифрой.';
-  } else if (endDot === startDot) {
-    statusEl.textContent = 'Нельзя соединить точку с самой собой.';
-  } else if (endDot.n !== startDot.n) {
-    statusEl.textContent = `Цифры разные: ${startDot.n} и ${endDot.n}.`;
-  } else if (connections.some(c =>
-    (c.start === startDot && c.end === endDot) ||
-    (c.start === endDot && c.end === startDot)
-  )) {
-    statusEl.textContent = 'Эта пара уже соединена.';
-  } else if (crosses) {
-    statusEl.textContent = 'Линии пересекаются — соединение не принято.';
-  } else {
-    connections.push(candidate);
-
-    if (connections.length === dots.length / 2) {
-      statusEl.textContent = 'Победа! Все пары соединены без пересечений.';
-    } else {
-      statusEl.textContent = `Готово! Осталось пар: ${dots.length / 2 - connections.length}.`;
-    }
-  }
-
-  drawing = null;
-  draw();
-}
-
-function drawCurve(curve, color, width, dashed = false) {
-  ctx.beginPath();
-  ctx.moveTo(curve.start.x, curve.start.y);
-  ctx.bezierCurveTo(
-    curve.c1.x, curve.c1.y,
-    curve.c2.x, curve.c2.y,
-    curve.end.x, curve.end.y
-  );
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.lineCap = 'round';
-
-  if (dashed) ctx.setLineDash([12, 9]);
-  ctx.stroke();
-  if (dashed) ctx.setLineDash([]);
-}
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Фоновая сетка
-  ctx.strokeStyle = '#dde3ec';
-  ctx.lineWidth = 1;
-
-  for (let x = 40; x < canvas.width; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-
-  for (let y = 40; y < canvas.height; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
-  }
-
-  // Готовые линии
-  connections.forEach(conn => {
-    const color = COLORS[(conn.start.n - 1) % COLORS.length];
-    drawCurve(conn, color, 8);
-  });
-
-  // Текущая рисуемая линия
-  if (drawing) {
-    const color = COLORS[(drawing.start.n - 1) % COLORS.length];
-    const preview = buildCurve(drawing.start, drawing.start, drawing.current);
-
-    ctx.save();
-    ctx.globalAlpha = drawing.valid ? 0.75 : 0.9;
-    drawCurve(
-      preview,
-      drawing.valid ? color : '#cc0000',
-      7,
-      !drawing.valid
-    );
-    ctx.restore();
-  }
-
-  // Точки
-  dots.forEach(dot => {
-    const color = COLORS[(dot.n - 1) % COLORS.length];
-    const isStart = drawing && drawing.start === dot;
-    const isHover = hoverDot === dot;
-
-    ctx.beginPath();
-    ctx.arc(dot.x, dot.y, isStart || isHover ? 27 : 22, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.lineWidth = isStart ? 7 : 4;
-    ctx.strokeStyle = color;
-    ctx.stroke();
-
-    ctx.fillStyle = color;
-    ctx.font = 'bold 21px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(dot.n, dot.x, dot.y + 1);
-  });
-}
-
-canvas.addEventListener('pointerdown', startDrawing);
-canvas.addEventListener('pointermove', moveDrawing);
-canvas.addEventListener('pointerup', finishDrawing);
-canvas.addEventListener('pointercancel', () => {
-  drawing = null;
-  draw();
-});
-
-document.getElementById('restart').addEventListener('click', () => {
-  generateLevel();
-  statusEl.textContent = 'Зажми точку и нарисуй кривую до точки с такой же цифрой.';
-  draw();
-});
-
-document.getElementById('undo').addEventListener('click', () => {
-  connections.pop();
-  statusEl.textContent = 'Последняя линия отменена.';
-  draw();
-});
-
-generateLevel();
-draw();
-</script>
 </body>
 </html>
