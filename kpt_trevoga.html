@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>КПТ против тревожности — живая схема</title>
+<style>
+  :root{
+    --bg1:#1b2440; --bg2:#2b1e4e;
+    --calm:#7ee8c7; --warm:#ffd27e; --bad:#ff8fa3;
+    --ink:#eef2ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    font-family:'Segoe UI',Arial,sans-serif; color:var(--ink);
+    background:linear-gradient(135deg,var(--bg1),var(--bg2));
+    overflow-x:hidden;
+  }
+  .stage{ max-width:760px; width:100%; padding:28px 18px 40px; }
+
+  h1{ text-align:center; font-size:26px; margin-bottom:6px; letter-spacing:.5px; }
+  .sub{ text-align:center; opacity:.75; font-size:14px; margin-bottom:26px; }
+
+  /* ---------- Дыхательный круг ---------- */
+  .breath-wrap{
+    display:flex; flex-direction:column; align-items:center; margin-bottom:34px;
+  }
+  .breather{
+    width:150px; height:150px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #a8f0ff, #4d7cff 70%);
+    box-shadow:0 0 40px rgba(120,180,255,.55), inset 0 0 24px rgba(255,255,255,.35);
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:15px; color:#10224a;
+    animation:breathe 8s ease-in-out infinite;
+  }
+  @keyframes breathe{
+    0%,100%{ transform:scale(.72); box-shadow:0 0 25px rgba(120,180,255,.4); }
+    45%,55%{ transform:scale(1.12); box-shadow:0 0 70px rgba(120,220,255,.75); }
+  }
+  .breath-label{ margin-top:14px; font-size:14px; opacity:.85; text-align:center; }
+
+  /* ---------- Цикл КПТ ---------- */
+  .loop{
+    position:relative; display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:34px 90px; padding:10px 8px 4px;
+    margin-bottom:8px;
+  }
+  .node{
+    background:rgba(255,255,255,.07);
+    border:2px solid rgba(255,255,255,.18);
+    border-radius:16px; padding:14px 12px; text-align:center;
+    backdrop-filter:blur(4px);
+    animation:pulse 3s ease-in-out infinite;
+  }
+  .node b{ display:block; font-size:16px; margin-bottom:4px; }
+  .node span{ font-size:12.5px; opacity:.8; line-height:1.35; display:block; }
+  .node:nth-child(1){ animation-delay:0s; }
+  .node:nth-child(2){ animation-delay:.75s; }
+  .node:nth-child(3){ animation-delay:1.5s; }
+  .node:nth-child(4){ animation-delay:2.25s; }
+  @keyframes pulse{
+    0%,100%{ border-color:rgba(255,255,255,.18); transform:scale(1); }
+    50%{ border-color:var(--calm); transform:scale(1.04);
+         box-shadow:0 0 22px rgba(126,232,199,.25); }
+  }
+  /* стрелки по кругу */
+  .loop::before, .loop::after{
+    content:''; position:absolute; font-size:26px; color:var(--calm);
+    animation:orbit 12s linear infinite;
+  }
+  .loop::before{ content:'➜'; right:6px; top:46%; transform:translateY(-50%);}
+  .loop::after { content:'➜'; left:6px; bottom:12%; }
+
+  /* ---------- Мысли: тревожная → проверенная ---------- */
+  .thoughts{ position:relative; height:190px; margin-top:10px; }
+  .cloud{
+    position:absolute; padding:12px 18px; border-radius:26px;
+    font-size:14px; max-width:270px; line-height:1.4;
+  }
+  .cloud.anxious{
+    left:4%; top:12px; background:rgba(255,143,163,.16);
+    border:2px dashed var(--bad); color:#ffd7de;
+    animation:driftL 9s ease-in-out infinite;
+  }
+  .cloud.balanced{
+    right:4%; top:96px; background:rgba(126,232,199,.14);
+    border:2px solid var(--calm); color:#d9fff2;
+    animation:driftR 9s ease-in-out infinite;
+  }
+  @keyframes driftL{
+    0%,100%{ transform:translate(0,0) rotate(-2deg); opacity:.95; }
+    50%{ transform:translate(12px,-8px) rotate(2deg); opacity:.6; }
+  }
+  @keyframes driftR{
+    0%,100%{ transform:translate(0,0) rotate(2deg); opacity:.6; }
+    50%{ transform:translate(-12px,8px) rotate(-2deg); opacity:.95; }
+  }
+  .swap-arrow{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    font-size:30px; color:var(--warm);
+    animation:swap 4.5s ease-in-out infinite;
+  }
+  @keyframes swap{
+    0%,100%{ transform:translate(-50%,-50%) scale(1); opacity:.7; }
+    50%{ transform:translate(-50%,-50%) scale(1.35); opacity:1; }
+  }
+  .q-mark{ position:absolute; font-size:22px; color:var(--warm); opacity:.85;
+    animation:floaty 5s ease-in-out infinite; }
+  .q-mark:nth-child(4){ left:38%; top:6px; }
+  .q-mark:nth-child(5){ left:56%; top:40px; animation-delay:1.2s;}
+  .q-mark:nth-child(6){ left:30%; top:60px; animation-delay:2.4s;}
+  @keyframes floaty{
+    0%,100%{ transform:translateY(0) rotate(-8deg); opacity:.4;}
+    50%{ transform:translateY(-14px) rotate(8deg); opacity:.95;}
+  }
+  .caption{ text-align:center; font-size:13px; opacity:.7; margin-top:6px; }
+
+  /* звёздочки на фоне */
+  .star{ position:fixed; width:3px; height:3px; border-radius:50%;
+    background:#fff; opacity:.5; animation:twinkle 3s infinite; }
+  @keyframes twinkle{ 0%,100%{opacity:.15;} 50%{opacity:.8;} }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <h1>🌿 Как работает КПТ при тревожности</h1>
+    <div class="sub">Дыши вместе с кругом — смотри, как тревожная мысль превращается в проверенную</div>
+
+    <div class="breath-wrap">
+      <div class="breather">вдох… выдох</div>
+      <div class="breath-label">4 секунды вдох — 4 секунды выдох.<br>Дыхание успокаивает тело — это первый шаг КПТ.</div>
+    </div>
+
+    <div class="loop">
+      <div class="node"><b>Ситуация</b><span>Что-то произошло</span></div>
+      <div class="node"><b>Мысль</b><span>Что я себе говорю</span></div>
+      <div class="node"><b>Эмоция</b><span>Что я чувствую</span></div>
+      <div class="node"><b>Поведение</b><span>Что я делаю дальше</span></div>
+    </div>
+    <div class="caption">цикл замыкается — но мысль можно изменить, и тогда меняется всё кольцо</div>
+
+    <div class="thoughts">
+      <div class="cloud anxious">«Все заметят, что я волнуюсь, и будут смеяться»</div>
+      <div class="swap-arrow">➜</div>
+      <span class="q-mark">?</span><span class="q-mark">?</span><span class="q-mark">?</span>
+      <div class="cloud balanced">«Я волнуюсь, но люди заняты собой. Даже если заметят — это не катастрофа»</div>
+    </div>
+    <div class="caption">проверяем мысль фактами — и она теряет силу</div>
+  </div>
+
+<script>
+  // звёздный фон
+  for(let i=0;i<40;i++){
+    const s=document.createElement('div');
+    s.className='star';
+    s.style.left=Math.random()*100+'vw';
+    s.style.top=Math.random()*100+'vh';
+    s.style.animationDelay=(Math.random()*3)+'s';
+    document.body.appendChild(s);
+  }
+</script>
+</body>
+</html>
